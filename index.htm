@@ -340,6 +340,10 @@ tbody tr:hover td{background:var(--s2)}
     <div class="sb-divider"></div>
     <div class="sb-section">Exportar</div>
 
+    <div class="sb-item" onclick="exportToTrainingPeaks()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      TrainingPeaks (.ics)
+    </div>
     <div class="sb-item" onclick="window.print()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       Imprimir / PDF
@@ -2264,20 +2268,6 @@ var chartInstances={};
 function destroyChart(id){ if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
 
 function buildCharts(){
-  var dbg = document.getElementById('chartsContainer');
-  if(!dbg) return;
-
-  // Debug: show what we have
-  var info = [];
-  info.push('CY.weeks: ' + (CY.weeks ? CY.weeks.length + ' semanas' : 'VAZIO'));
-  if(CY.weeks && CY.weeks.length){
-    var w0 = CY.weeks[0];
-    info.push('semana 1 start: ' + JSON.stringify(w0.start));
-    info.push('semana 1 volWk: ' + w0.volWk);
-    info.push('Chart definido: ' + (typeof Chart !== 'undefined'));
-  }
-  dbg.innerHTML = '<div style="padding:20px;font-family:monospace;font-size:12px;background:#f5f5f0;border-radius:8px;white-space:pre-wrap">' + info.join('\n') + '</div>';
-
   if(!CY.weeks || !CY.weeks.length) return;
   try {
   var ws=CY.weeks;
@@ -2402,6 +2392,158 @@ window._APP = {
     updateLongMax();
     renderStudentList();
   }
+};
+
+// ── TRAININGPEAKS EXPORT (.ics) ──────────────────────────────────────────────
+window.exportToTrainingPeaks = function(){
+  if(!CY.weeks || !CY.weeks.length){
+    notify('Gere o ciclo primeiro antes de exportar.');
+    return;
+  }
+  var stu = ACTIVE_STUDENT_ID ? STUDENTS.filter(function(x){return x.id===ACTIVE_STUDENT_ID;})[0] : null;
+  var stuName = stu ? stu.name : 'Atleta';
+  var lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Metodo Fernando Moleta//Ciclo de Corrida//PT',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Plano ' + stuName + ' - Método Fernando Moleta',
+    'X-WR-TIMEZONE:America/Sao_Paulo'
+  ];
+
+  // Zone paces for description
+  var hrMax = CY.hrMax || 0;
+  var lt    = CY.ltPaceDec || 0;
+  function fmtPaceSec(s){ if(!s||!isFinite(s)) return '--:--'; var m=Math.floor(s/60),sec=Math.round(s%60); return (m<10?'0':'')+m+':'+(sec<10?'0':'')+sec; }
+  function zoneFC(pct1, pct2){ 
+    if(!hrMax) return '';
+    return Math.round(hrMax*pct1/100)+'-'+Math.round(hrMax*pct2/100)+' bpm';
+  }
+  function zonePace(mult1, mult2){
+    if(!lt) return '';
+    return fmtPaceSec(lt*mult2)+' a '+fmtPaceSec(lt*mult1)+' /km';
+  }
+  var zoneRef = {
+    'Z1': {fc: zoneFC(0,75),   pace: '> '+fmtPaceSec(lt*1.30)+' /km', name:'Recuperação ativa'},
+    'Z2': {fc: zoneFC(75,82),  pace: zonePace(1.10,1.20),              name:'Base aeróbia'},
+    'Z3': {fc: zoneFC(82,87),  pace: zonePace(1.02,1.10),              name:'Aeróbia moderada'},
+    'Z4': {fc: zoneFC(87,92),  pace: zonePace(0.95,1.02),              name:'Limiar anaeróbio'},
+    'Z5': {fc: zoneFC(92,100), pace: '< '+fmtPaceSec(lt*0.93)+' /km', name:'VO2máx / Neuromuscular'}
+  };
+
+  function icsDate(d){
+    var dt = d instanceof Date ? d : new Date(d);
+    var y=dt.getFullYear(), m=('0'+(dt.getMonth()+1)).slice(-2), day=('0'+dt.getDate()).slice(-2);
+    return y+''+m+''+day;
+  }
+
+  function icsEscape(s){
+    if(!s) return '';
+    var r = '';
+    for(var i=0;i<s.length;i++){
+      var c=s[i];
+      if(c==='\\') r+='\\\\';
+      else if(c===';') r+='\\;';
+      else if(c===',') r+='\\,';
+      else if(c==='\n') r+='\\n';
+      else if(c==='\r') {}
+      else r+=c;
+    }
+    return r;
+  }
+
+  function uid(){ return 'fm-'+Date.now()+'-'+Math.random().toString(36).slice(2); }
+
+  var now = new Date();
+  var stamp = now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'T'+
+              ('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2)+('0'+now.getSeconds()).slice(-2)+'Z';
+
+  // Session type labels
+  var typeLabel = {lng:'Corrida longa', tmp:'Tempo run', int:'Intervalado', far:'Fartlek', rec:'Recuperação'};
+  var typeEmoji = {lng:'🏃', tmp:'⏱️', int:'⚡', far:'🌀', rec:'💤'};
+
+  CY.weeks.forEach(function(wk){
+    if(!wk.sessions || !wk.sessions.length) return;
+    var wkStart = wk.start instanceof Date ? wk.start : new Date(wk.start);
+
+    // Calculate day offsets for each session type
+    // Distribute sessions across the week starting Monday
+    var dayMap = {rec:0, lng:4, tmp:1, int:2, far:3}; // Mon=0 ... Fri=4
+    // If multiple sessions of same type, spread them
+    var dayUsed = {};
+
+    wk.sessions.forEach(function(ss, idx){
+      var dayOffset = dayMap[ss.type] !== undefined ? dayMap[ss.type] : idx;
+      // avoid collision
+      while(dayUsed[dayOffset]) dayOffset = (dayOffset+1)%7;
+      dayUsed[dayOffset] = true;
+
+      var sessDate = new Date(wkStart);
+      sessDate.setDate(wkStart.getDate() + dayOffset);
+
+      // Build description
+      var desc = [];
+      desc.push('SEMANA ' + wk.w + ' | ' + wk.phase + ' | ' + wk.method);
+      desc.push('');
+      desc.push(ss.desc || '');
+      desc.push('');
+      desc.push('📏 Volume: ' + (ss.km||0).toFixed(1) + ' km');
+      desc.push('💪 RPE alvo: ' + (ss.rpe||'-'));
+
+      // Zones
+      if(ss.zones && ss.zones.length){
+        desc.push('');
+        desc.push('ZONAS DE TRABALHO:');
+        ss.zones.forEach(function(z){
+          var zr = zoneRef[z];
+          if(zr){
+            var line = z + ' - ' + zr.name;
+            if(zr.fc)   line += ' | FC: ' + zr.fc;
+            if(zr.pace) line += ' | Pace: ' + zr.pace;
+            desc.push(line);
+          }
+        });
+      }
+
+      if(lt){
+        desc.push('');
+        desc.push('Pace de limiar de referência: ' + fmtPaceSec(lt) + ' /km');
+      }
+      if(hrMax){
+        desc.push('FC máxima de referência: ' + hrMax + ' bpm');
+      }
+      desc.push('');
+      desc.push('─── Método Fernando Moleta ───');
+
+      var title = (typeEmoji[ss.type]||'🏃') + ' S'+wk.w+' - '+(typeLabel[ss.type]||ss.type)+' '+((ss.km||0).toFixed(1))+'km';
+
+      lines.push('BEGIN:VEVENT');
+      lines.push('UID:' + uid());
+      lines.push('DTSTAMP:' + stamp);
+      lines.push('DTSTART;VALUE=DATE:' + icsDate(sessDate));
+      lines.push('DTEND;VALUE=DATE:' + icsDate(sessDate));
+      lines.push('SUMMARY:' + icsEscape(title));
+      lines.push('DESCRIPTION:' + icsEscape(desc.join('\n')));
+      lines.push('CATEGORIES:Corrida,' + (typeLabel[ss.type]||ss.type));
+      lines.push('X-TRAININGPEAKS-WORKOUT-TYPE:Run');
+      lines.push('X-TRAININGPEAKS-PLANNED-DISTANCE:' + ((ss.km||0)*1000).toFixed(0));
+      lines.push('STATUS:CONFIRMED');
+      lines.push('TRANSP:TRANSPARENT');
+      lines.push('END:VEVENT');
+    });
+  });
+
+  lines.push('END:VCALENDAR');
+
+  var icsContent = lines.join('\r\n');
+  var blob = new Blob([icsContent], {type: 'text/calendar;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var fname = 'ciclo-' + stuName.replace(/\s+/g,'-').toLowerCase() + '.ics';
+  a.download = fname;
+  a.click();
+  notify('Arquivo exportado: ' + fname + ' — importe no TrainingPeaks!');
 };
 
 })();
