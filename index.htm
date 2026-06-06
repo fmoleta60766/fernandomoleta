@@ -378,8 +378,8 @@ tbody tr:hover td{background:var(--s2)}
   <div class="card">
     <div class="sec-label">Datas e estrutura</div>
     <div class="g4">
-      <div class="field"><label>Data inicial</label><input type="date" id="startDate" value="2026-06-05"></div>
-      <div class="field"><label>Data da prova</label><input type="date" id="raceDate" value="2026-10-05"></div>
+      <div class="field"><label>Data inicial</label><input type="date" id="startDate" value="2026-06-06"></div>
+      <div class="field"><label>Data da prova</label><input type="date" id="raceDate" value="2026-10-06"></div>
       <div class="field"><label>Dias de treino / semana</label>
         <select id="daysPerWeek">
           <option value="3">3 dias</option>
@@ -2258,6 +2258,13 @@ function destroyChart(id){ if(chartInstances[id]){chartInstances[id].destroy();d
 function buildCharts(){
   if(!CY.weeks) return;
   var ws=CY.weeks;
+  // Destroy existing charts first
+  ['ch-weekly','ch-monthly','ch-prog'].forEach(function(id){ destroyChart(id); });
+  // Reset canvas elements to avoid "already in use" error
+  ['ch-weekly','ch-monthly','ch-prog'].forEach(function(id){
+    var canvas = el(id);
+    if(canvas){ var p=canvas.parentNode; var nc=document.createElement('canvas'); nc.id=id; p.replaceChild(nc,canvas); }
+  });
   // Restore Date objects if loaded from cloud (stored as strings)
   for(var i=0;i<ws.length;i++){
     if(ws[i].start && typeof ws[i].start === 'string') ws[i].start = new Date(ws[i].start);
@@ -2294,6 +2301,7 @@ function buildCharts(){
     +'<div class="chart-wrap" style="height:180px"><canvas id="ch-prog"></canvas></div></div>';
 
   destroyChart('ch-weekly');
+  destroyChart('ch-weekly'); destroyChart('ch-monthly'); destroyChart('ch-prog');
   if(typeof Chart!=='undefined') chartInstances['ch-weekly']=new Chart(el('ch-weekly'),{type:'bar',data:{labels:wLabels,datasets:[
     {label:'Planejado',data:wPlan,backgroundColor:'#E0DBD3',borderRadius:3},
     {label:'Realizado',data:wExec,backgroundColor:'#2E7D52',borderRadius:3}
