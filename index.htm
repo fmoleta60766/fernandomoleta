@@ -2404,6 +2404,28 @@ window._APP = {
 
 window.copySessionToTP = function(key){
   var cached = _sessDataCache[key] || {};
+  var selEl = document.getElementById('sel-'+key);
+  var title = selEl ? selEl.options[selEl.selectedIndex].text : (key||'');
+  var descEl = document.getElementById('desc-'+key);
+  var desc  = descEl ? descEl.value : '';
+
+  var text = title + '\n\n' + desc;
+
+  navigator.clipboard.writeText(text).then(function(){
+    notify('Treino copiado! Cole na descrição do treino no TrainingPeaks.');
+  }).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    notify('Treino copiado! Cole na descrição do treino no TrainingPeaks.');
+  });
+};window.copySessionToTP = function(key){
+  var cached = _sessDataCache[key] || {};
   var km    = cached.km || 0;
   var rpe   = cached.rpe || '';
   var zones = cached.zones || [];
