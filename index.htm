@@ -2408,28 +2408,21 @@ window.copySessionToTP = function(key){
   var title  = selEl  ? selEl.options[selEl.selectedIndex].text : '';
   var desc   = descEl ? descEl.value : '';
   var text   = title + '\n\n' + desc;
-  try {
-    navigator.clipboard.writeText(text).then(function(){
-      notify('Copiado!');
-    }, function(){
-      fallbackCopy(text);
-    });
-  } catch(e){
-    fallbackCopy(text);
+
+  // Show modal with text pre-selected for manual copy
+  var modal = document.getElementById('copy-modal');
+  var ta    = document.getElementById('copy-modal-text');
+  if(modal && ta){
+    ta.value = text;
+    modal.style.display = 'flex';
+    setTimeout(function(){ ta.focus(); ta.select(); }, 100);
   }
 };
 
-function fallbackCopy(text){
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
-  try { document.execCommand('copy'); notify('Copiado!'); }
-  catch(e){ notify('Erro ao copiar — selecione o texto manualmente.'); }
-  document.body.removeChild(ta);
-};window.copySessionToTP = function(key){
+window.closeCopyModal = function(){
+  document.getElementById('copy-modal').style.display = 'none';
+};;
+;window.copySessionToTP = function(key){
   var cached = _sessDataCache[key] || {};
   var km    = cached.km || 0;
   var rpe   = cached.rpe || '';
@@ -2498,5 +2491,21 @@ function fallbackCopy(text){
 })();
 </script>
 
+
+<!-- COPY TO TP MODAL -->
+<div id="copy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--surface);border-radius:var(--r2);padding:24px;width:100%;max-width:560px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:600;color:var(--text)">Copiar para TrainingPeaks</div>
+      <button onclick="closeCopyModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--t2)">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:10px;font-family:var(--mono)">Texto selecionado — pressione Ctrl+C para copiar</div>
+    <textarea id="copy-modal-text" rows="10" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:var(--r);font-family:var(--mono);font-size:12px;line-height:1.6;resize:vertical;background:var(--s2);box-sizing:border-box"></textarea>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button onclick="document.getElementById('copy-modal-text').select();document.execCommand('copy');notify('Copiado!');closeCopyModal();" class="btn btn-primary" style="flex:1;justify-content:center;padding:10px">Copiar</button>
+      <button onclick="closeCopyModal()" class="btn" style="padding:10px 16px">Fechar</button>
+    </div>
+  </div>
+</div>
 
 </div></body></html>
