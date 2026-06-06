@@ -340,10 +340,7 @@ tbody tr:hover td{background:var(--s2)}
     <div class="sb-divider"></div>
     <div class="sb-section">Exportar</div>
 
-    <div class="sb-item" onclick="exportToTrainingPeaks()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      TrainingPeaks (.ics)
-    </div>
+
     <div class="sb-item" onclick="window.print()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       Imprimir / PDF
@@ -2175,6 +2172,17 @@ function buildSessions(){
 
       html+='<div class="sess-zones">'+zoneHTML+'<span class="sess-rpe">RPE '+ss.rpe+'</span></div>';
 
+      // Copy to TrainingPeaks button — use data attributes to avoid escaping issues
+      html+='<div style="margin-top:8px;margin-bottom:4px">'
+        +'<button class="tp-copy-btn" '
+        +'data-key="'+key+'" '
+        +'data-km="'+ss.km+'" '
+        +'data-rpe="'+ss.rpe+'" '
+        +'data-zones="'+(ss.zones||[]).join(',')+'" '
+        +'style="font-size:10px;font-family:var(--mono);padding:4px 10px;background:rgba(0,112,210,.1);border:1px solid rgba(0,112,210,.3);border-radius:6px;color:#0070d2;cursor:pointer;letter-spacing:.04em" '
+        +'title="Copia o treino formatado para colar no TrainingPeaks">&#128203; Copiar para TrainingPeaks</button>'
+        +'</div>';
+
       // log
       html+='<div class="sess-log"><div class="sess-log-label">Registrar execução</div><div class="sess-log-row">';
       html+='<input type="number" placeholder="km" min="0" max="99" step="0.1" id="ek-'+key+'" value="'+(saved.km||'')+'">';
@@ -2191,6 +2199,16 @@ function buildSessions(){
     html+='</div></div></div>';
   }
   el('sessionsContainer').innerHTML=html;
+  // Wire copy buttons via event delegation
+  el('sessionsContainer').addEventListener('click', function(e){
+    var btn = e.target.closest('.tp-copy-btn');
+    if(!btn) return;
+    var key   = btn.getAttribute('data-key');
+    var km    = parseFloat(btn.getAttribute('data-km'))||0;
+    var rpe   = btn.getAttribute('data-rpe')||'';
+    var zones = (btn.getAttribute('data-zones')||'').split(',').filter(Boolean);
+    copySessionToTP(key, km, rpe, zones);
+  });
   for(var k in EXEC){ var sv=el('sv-'+k); if(sv&&EXEC[k].km){sv.style.display='block';} }
 }
 
@@ -2544,6 +2562,70 @@ window.exportToTrainingPeaks = function(){
   a.download = fname;
   a.click();
   notify('Arquivo exportado: ' + fname + ' — importe no TrainingPeaks!');
+};
+
+// ── COPY SESSION TO TRAININGPEAKS ────────────────────────────────────────────
+window.copySessionToTP = function(key, km, rpe, zones){
+  // Get title from the session selector or desc
+  var selEl = document.getElementById('sel-'+key);
+  var title = selEl ? selEl.options[selEl.selectedIndex].text : '';
+  var desc    = document.getElementById('desc-'+key);
+  var descTxt = desc ? desc.value : '';
+  var hrMax   = CY.hrMax || 0;
+  var lt      = CY.ltPaceDec || 0;
+
+  function fmtP(s){ if(!s||!isFinite(s)) return '--:--'; var m=Math.floor(s/60),sec=Math.round(s%60); return (m<10?'0':'')+m+':'+(sec<10?'0':'')+sec; }
+  function fcRange(p1,p2){ return hrMax ? Math.round(hrMax*p1/100)+'-'+Math.round(hrMax*p2/100)+' bpm' : ''; }
+  function paceRange(m1,m2){ return lt ? fmtP(lt*m2)+' a '+fmtP(lt*m1)+' /km' : ''; }
+
+  var zoneInfo = {
+    'Z1': {name:'Recuperação ativa',    fc:fcRange(0,75),   pace:'> '+fmtP(lt*1.30)+' /km'},
+    'Z2': {name:'Base aeróbia',         fc:fcRange(75,82),  pace:paceRange(1.10,1.20)},
+    'Z3': {name:'Aeróbia moderada',     fc:fcRange(82,87),  pace:paceRange(1.02,1.10)},
+    'Z4': {name:'Limiar anaeróbio',     fc:fcRange(87,92),  pace:paceRange(0.95,1.02)},
+    'Z5': {name:'VO2máx / Neuromuscular',fc:fcRange(92,100),pace:'< '+fmtP(lt*0.93)+' /km'}
+  };
+
+  var lines = [];
+  lines.push('🏃 ' + title);
+  lines.push('📏 Volume: ' + km.toFixed(1) + ' km  |  💪 RPE: ' + rpe);
+  lines.push('');
+  lines.push(descTxt);
+  lines.push('');
+  lines.push('── ZONAS DE TRABALHO ──');
+  zones.forEach(function(z){
+    var zi = zoneInfo[z];
+    if(!zi) return;
+    var line = z + ' – ' + zi.name;
+    if(zi.fc)   line += '  |  FC: ' + zi.fc;
+    if(zi.pace) line += '  |  Pace: ' + zi.pace;
+    lines.push(line);
+  });
+  if(lt){
+    lines.push('');
+    lines.push('Pace de limiar: ' + fmtP(lt) + ' /km');
+  }
+  if(hrMax){
+    lines.push('FC máxima: ' + hrMax + ' bpm');
+  }
+  lines.push('');
+  lines.push('── Método Fernando Moleta – Arquitetura de Resultados ──');
+
+  var text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(function(){
+    notify('Treino copiado! Cole na descrição do treino no TrainingPeaks.');
+  }).catch(function(){
+    // Fallback for browsers that block clipboard
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    notify('Treino copiado! Cole na descrição do treino no TrainingPeaks.');
+  });
 };
 
 })();
