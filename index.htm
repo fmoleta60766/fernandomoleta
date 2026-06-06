@@ -1544,7 +1544,15 @@ window.showPage = function(id){
   var map = {'pg-config':0,'pg-sessions':1,'pg-charts':2,'pg-zones':3};
   var items = document.querySelectorAll('.sb-item');
   if(map[id]!==undefined && items[map[id]]) items[map[id]].classList.add('active');
-  if(id==='pg-charts') buildCharts();
+  if(id==='pg-charts'){
+    // Ensure sessions exist before building charts
+    if(CY.weeks) CY.weeks.forEach(function(wk){
+      if(!wk.sessions||!wk.sessions.length) wk.sessions=genSessions(wk,CY.ltPaceDec||0);
+      if(wk.start&&typeof wk.start==='string') wk.start=new Date(wk.start);
+      if(wk.end  &&typeof wk.end  ==='string') wk.end  =new Date(wk.end);
+    });
+    buildCharts();
+  }
 };
 
 // call once immediately since script is at end of body
@@ -2256,7 +2264,8 @@ var chartInstances={};
 function destroyChart(id){ if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
 
 function buildCharts(){
-  if(!CY.weeks) return;
+  if(!CY.weeks || !CY.weeks.length) return;
+  try {
   var ws=CY.weeks;
   // Destroy existing charts first
   ['ch-weekly','ch-monthly','ch-prog'].forEach(function(id){ destroyChart(id); });
@@ -2269,6 +2278,12 @@ function buildCharts(){
   for(var i=0;i<ws.length;i++){
     if(ws[i].start && typeof ws[i].start === 'string') ws[i].start = new Date(ws[i].start);
     if(ws[i].end   && typeof ws[i].end   === 'string') ws[i].end   = new Date(ws[i].end);
+  }
+  // Regenerate sessions if missing (e.g. after cloud load)
+  for(var i=0;i<ws.length;i++){
+    if(!ws[i].sessions || !ws[i].sessions.length){
+      ws[i].sessions = genSessions(ws[i], CY.ltPaceDec||0);
+    }
   }
   var monthly={};
   for(var i=0;i<ws.length;i++){
@@ -2286,7 +2301,7 @@ function buildCharts(){
   var totalExec=wExec.reduce(function(a,b){return a+b;},0);
   var totalPlan=wPlan.reduce(function(a,b){return a+b;},0);
   var sessTotal=0,sessLogged=0;
-  for(var i=0;i<ws.length;i++) sessTotal+=ws[i].sessions.length;
+  for(var i=0;i<ws.length;i++) sessTotal+=(ws[i].sessions&&ws[i].sessions.length)||0;
   for(var k in EXEC) if(EXEC[k].km>0) sessLogged++;
 
   el('chartsContainer').innerHTML='<div class="g2" style="margin-bottom:16px">'
@@ -2318,6 +2333,7 @@ function buildCharts(){
     {label:'Planejado',data:wPlan,borderColor:'#C8C2BA',backgroundColor:'transparent',borderWidth:2,pointRadius:2,tension:0.3},
     {label:'Realizado',data:wExec.map(function(v){return v>0?v:null;}),borderColor:'#2E7D52',backgroundColor:'rgba(46,125,82,.08)',borderWidth:2,pointRadius:3,tension:0.3,fill:true}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},scales:{x:{ticks:{font:{size:10},autoSkip:true,maxRotation:45}},y:{ticks:{font:{size:10}}}}}});
+  } catch(e){ console.error('buildCharts error:', e); }
 }
 
 // ---- NOTIFY ----
