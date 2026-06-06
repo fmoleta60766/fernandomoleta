@@ -2264,6 +2264,20 @@ var chartInstances={};
 function destroyChart(id){ if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
 
 function buildCharts(){
+  var dbg = document.getElementById('chartsContainer');
+  if(!dbg) return;
+
+  // Debug: show what we have
+  var info = [];
+  info.push('CY.weeks: ' + (CY.weeks ? CY.weeks.length + ' semanas' : 'VAZIO'));
+  if(CY.weeks && CY.weeks.length){
+    var w0 = CY.weeks[0];
+    info.push('semana 1 start: ' + JSON.stringify(w0.start));
+    info.push('semana 1 volWk: ' + w0.volWk);
+    info.push('Chart definido: ' + (typeof Chart !== 'undefined'));
+  }
+  dbg.innerHTML = '<div style="padding:20px;font-family:monospace;font-size:12px;background:#f5f5f0;border-radius:8px;white-space:pre-wrap">' + info.join('\n') + '</div>';
+
   if(!CY.weeks || !CY.weeks.length) return;
   try {
   var ws=CY.weeks;
